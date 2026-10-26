@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '../utils/supabase';
+import { createClient } from '@/utils/supabase/client';
+
+const supabase = createClient();
 
 export default function Home() {
   const [status, setStatus] = useState<string>('Chưa test');
