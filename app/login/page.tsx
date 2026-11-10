@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
+import { signInDemoAccount } from '@/app/questions/actions';
 
 type AuthMode = 'login' | 'register';
 
@@ -17,11 +18,11 @@ function FloatingParticles() {
   return (
     <div className="fixed inset-0 z-[1] pointer-events-none overflow-hidden">
       {Array.from({ length: 20 }).map((_, i) => {
-        const size = Math.random() * 3 + 1;
-        const left = Math.random() * 100;
-        const duration = Math.random() * 20 + 15;
-        const delay = Math.random() * 15;
-        const opacity = Math.random() * 0.3 + 0.1;
+        const size = 1 + (i % 4) * 0.65;
+        const left = (i * 29) % 100;
+        const duration = 15 + (i % 5) * 2.5;
+        const delay = (i * 1.3) % 15;
+        const opacity = 0.1 + (i % 4) * 0.06;
         return (
           <div
             key={i}
@@ -73,11 +74,8 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = true;
+  const [demoLoading, setDemoLoading] = useState<'ADMIN' | 'INTERVIEWEE' | null>(null);
 
   // Track mouse for subtle parallax
   useEffect(() => {
@@ -143,10 +141,16 @@ export default function LoginPage() {
     if (!validate()) return;
     setIsLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName.trim() } } });
 
     if (error) {
       showToast(error.message || 'Registration failed', 'error');
+      setIsLoading(false);
+      return;
+    }
+
+    if (data.user && !data.session) {
+      showToast('Please check your email to verify your account', 'success');
       setIsLoading(false);
       return;
     }
@@ -159,18 +163,12 @@ export default function LoginPage() {
           full_name: fullName.trim() || 'New User',
         });
 
-      if (profileError) {
+      if (profileError && profileError.code !== '23505') {
         console.error('Profile creation error:', profileError);
         showToast('Account created but profile setup failed', 'error');
         setIsLoading(false);
         return;
       }
-    }
-
-    if (data.user && !data.session) {
-      showToast('Please check your email to verify your account', 'success');
-      setIsLoading(false);
-      return;
     }
 
     showToast('Account created successfully', 'success');
@@ -179,7 +177,22 @@ export default function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    mode === 'login' ? handleSignIn() : handleSignUp();
+    if (mode === 'login') {
+      void handleSignIn();
+    } else {
+      void handleSignUp();
+    }
+  };
+
+  const handleDemoSignIn = async (role: 'ADMIN' | 'INTERVIEWEE') => {
+    setDemoLoading(role);
+    try {
+      const result = await signInDemoAccount(role);
+      if (!result.success) { showToast(result.error, 'error'); return; }
+      router.push(result.redirectTo);
+      router.refresh();
+    } catch { showToast('Không thể kết nối máy chủ. Vui lòng thử lại.', 'error'); }
+    finally { setDemoLoading(null); }
   };
 
   return (
@@ -342,7 +355,7 @@ export default function LoginPage() {
                   {/* Submit */}
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || Boolean(demoLoading)}
                     className="luxury-btn w-full py-4 rounded-sm"
                   >
                     {isLoading ? (
@@ -360,6 +373,23 @@ export default function LoginPage() {
                     )}
                   </button>
                 </form>
+
+                {mode === 'login' && (
+                  <section className="mt-7 rounded-sm border border-[rgba(201,169,110,0.16)] bg-[rgba(201,169,110,0.035)] p-4 sm:p-5" aria-label="1-Click Recruiter Demo">
+                    <div className="mb-4">
+                      <h2 className="text-[0.65rem] font-medium uppercase tracking-[0.2em] text-[var(--accent)]">1-Click Recruiter Demo</h2>
+                      <p className="mt-1.5 text-xs leading-5 text-[rgba(245,240,235,0.38)]">Đăng nhập mẫu để xem giao diện theo từng vai trò. Tài khoản và mật khẩu được cấu hình riêng trên máy chủ.</p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button type="button" onClick={() => handleDemoSignIn('ADMIN')} disabled={Boolean(demoLoading) || isLoading} className="rounded-sm border border-[rgba(251,191,36,0.25)] px-3 py-3 text-[0.62rem] font-medium uppercase tracking-[0.1em] text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-45">
+                        {demoLoading === 'ADMIN' ? 'Đang đăng nhập…' : 'Vào nhanh vai trò ADMIN'}
+                      </button>
+                      <button type="button" onClick={() => handleDemoSignIn('INTERVIEWEE')} disabled={Boolean(demoLoading) || isLoading} className="rounded-sm border border-[rgba(96,165,250,0.25)] px-3 py-3 text-[0.62rem] font-medium uppercase tracking-[0.08em] text-blue-200 transition-colors hover:bg-blue-300/10 disabled:opacity-45">
+                        {demoLoading === 'INTERVIEWEE' ? 'Đang đăng nhập…' : 'Vào nhanh vai trò ỨNG VIÊN'}
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 

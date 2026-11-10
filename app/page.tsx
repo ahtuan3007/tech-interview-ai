@@ -19,8 +19,8 @@ export default function Home() {
       } else {
         setStatus('KẾT NỐI THÀNH CÔNG! Dữ liệu trả về: ' + JSON.stringify(data));
       }
-    } catch (err: any) {
-      setStatus('LỖI HỆ THỐNG: ' + err.message);
+    } catch (err: unknown) {
+      setStatus('LỖI HỆ THỐNG: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
