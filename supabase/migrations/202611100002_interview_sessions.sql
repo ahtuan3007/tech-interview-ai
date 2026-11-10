@@ -1,43 +1,29 @@
--- REVIEW DRAFT ONLY. Not executed by the application or the implementation agent.
--- Target: the existing public.interview_sessions table and public.session_status enum.
--- Review existing constraints, policies, triggers and column grants before applying.
--- Historical sessions are not assigned invented questions or modes.
-
--- Commit enum additions before using their values in later statements.
 BEGIN;
-ALTER TYPE public.session_status ADD VALUE IF NOT EXISTS 'LIVE';
-ALTER TYPE public.session_status ADD VALUE IF NOT EXISTS 'EXPIRED';
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = 'public' AND t.typname = 'interview_session_mode'
-  ) THEN
-    CREATE TYPE public.interview_session_mode AS ENUM ('PEER_TO_PEER', 'AI_MOCK_INTERVIEW');
-  END IF;
-END $$;
-COMMIT;
-
-BEGIN;
+-- The existing sessions table was empty. Fail atomically if data needs a backfill.
 ALTER TABLE public.interview_sessions
-  ADD COLUMN IF NOT EXISTS question_id uuid REFERENCES public.questions(id),
-  ADD COLUMN IF NOT EXISTS session_mode public.interview_session_mode;
-ALTER TABLE public.interview_sessions
-  ALTER COLUMN id SET DEFAULT gen_random_uuid(),
-  ALTER COLUMN created_at SET DEFAULT now(),
-  ALTER COLUMN status SET DEFAULT 'SCHEDULED';
-
--- NOT VALID preserves historical rows but enforces the contract for new writes.
--- Backfill historical sessions explicitly before validating these constraints.
-ALTER TABLE public.interview_sessions
-  ADD CONSTRAINT phase4_question_required CHECK (question_id IS NOT NULL) NOT VALID,
-  ADD CONSTRAINT phase4_mode_required CHECK (session_mode IS NOT NULL) NOT VALID,
-  ADD CONSTRAINT phase4_schedule_required CHECK (scheduled_at IS NOT NULL) NOT VALID,
+  ADD COLUMN question_id uuid NOT NULL REFERENCES public.questions(id),
+  ADD COLUMN session_mode public.interview_session_mode NOT NULL,
+  ALTER COLUMN status SET NOT NULL,
+  ALTER COLUMN scheduled_at SET NOT NULL,
   ADD CONSTRAINT phase4_participants_valid CHECK (
-    interviewee_id IS NOT NULL AND (
-      (session_mode = 'AI_MOCK_INTERVIEW' AND interviewer_id IS NULL) OR
-      (session_mode = 'PEER_TO_PEER' AND interviewer_id IS NOT NULL AND interviewer_id <> interviewee_id)
-    )
-  ) NOT VALID;
+    (session_mode = 'AI_MOCK_INTERVIEW' AND interviewer_id IS NULL) OR
+    (session_mode = 'PEER_TO_PEER' AND interviewer_id IS NOT NULL AND interviewer_id <> interviewee_id)
+  );
+
+-- Keep role assignments in trusted server/administrator hands.
+CREATE FUNCTION public.phase4_guard_profile_role() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF current_user IN ('authenticated','anon') THEN
+    IF (TG_OP = 'INSERT' AND NEW.role IS DISTINCT FROM 'INTERVIEWEE') OR
+       (TG_OP = 'UPDATE' AND NEW.role IS DISTINCT FROM OLD.role) THEN
+      RAISE EXCEPTION 'Profile role is managed by administrators' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER phase4_guard_profile_role BEFORE INSERT OR UPDATE OF role ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.phase4_guard_profile_role();
 
 CREATE INDEX IF NOT EXISTS phase4_sessions_candidate_time
   ON public.interview_sessions (interviewee_id, scheduled_at DESC);
@@ -46,6 +32,7 @@ CREATE INDEX IF NOT EXISTS phase4_sessions_interviewer_time
 
 ALTER TABLE public.interview_sessions ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.interview_sessions TO authenticated;
+REVOKE INSERT ON public.interview_sessions FROM authenticated;
 GRANT INSERT (interviewer_id, interviewee_id, question_id, session_mode, status, scheduled_at)
   ON public.interview_sessions TO authenticated;
 REVOKE UPDATE ON public.interview_sessions FROM authenticated;
@@ -80,7 +67,7 @@ CREATE POLICY phase4_update_participants ON public.interview_sessions FOR UPDATE
   ));
 
 -- Prevent direct REST updates from reassigning participants or bypassing the start time.
-CREATE OR REPLACE FUNCTION public.phase4_guard_session_transition()
+CREATE FUNCTION public.phase4_guard_session_transition()
 RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
   IF ROW(NEW.id, NEW.interviewer_id, NEW.interviewee_id, NEW.question_id, NEW.session_mode, NEW.scheduled_at, NEW.created_at)
@@ -96,8 +83,3 @@ END $$;
 CREATE TRIGGER phase4_guard_session_transition BEFORE UPDATE ON public.interview_sessions
   FOR EACH ROW EXECUTE FUNCTION public.phase4_guard_session_transition();
 COMMIT;
-
--- After reviewing/backfilling historical records, validate the constraints and set
--- question_id/session_mode NOT NULL in a separate change. Do not invent backfill data.
--- This draft is intended for a single reviewed application; policy/constraint names
--- are deliberately not dropped/replaced if already installed.
