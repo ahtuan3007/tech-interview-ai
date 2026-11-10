@@ -28,3 +28,7 @@ npm run build
 ```
 
 Các test ứng dụng dùng mock transport để kiểm tra danh tính, thời gian, quyền phòng, xử lý vào phòng đồng thời và lỗi database.
+
+## Kiểm thử trên Supabase
+
+Chạy `supabase/tests/interview_scheduling.sql` trong SQL Editor với quyền postgres. Cần một hồ sơ INTERVIEWEE, một ADMIN và một đề bài. Script chuyển sang role authenticated, mô phỏng từng danh tính bằng JWT claims và rollback toàn bộ fixture. Đã PASS trên dự án: tạo lịch AI tức thì/tương lai và lịch hai người; chặn mở sớm, mở lại phòng đã hoàn tất và người ngoài; thành viên và ADMIN truy cập đúng phạm vi. API REST thật cũng nhận hai trạng thái LIVE/EXPIRED và các cột mới (HTTP 200). Đây là kiểm thử database và API, không thay thế thử đăng nhập qua trình duyệt.
