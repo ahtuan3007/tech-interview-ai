@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import Markdown from '@/app/components/markdown';
 import { useRouter } from 'next/navigation';
 import { deleteQuestion } from '../actions';
@@ -54,6 +55,7 @@ export default function QuestionDetailClient({
               <h1 className="truncate font-serif text-xl text-accent-gradient">{question.title}</h1>
             </div>
             <div className="flex shrink-0 gap-2">
+              <Link href={`/interviews/schedule?question=${question.id}`} className="luxury-btn rounded-sm px-4 py-2 text-xs">Đặt lịch</Link>
               {isAdmin && <>
                 <button type="button" onClick={() => router.push(`/questions/edit/${question.id}`)} className="luxury-btn-outline rounded-sm px-4 py-2 text-xs">Sửa</button>
                 <button type="button" onClick={handleDelete} disabled={isDeleting} className="rounded-sm border border-red-400/30 px-4 py-2 text-xs text-red-300 disabled:opacity-50">{isDeleting ? 'Đang xóa…' : 'Xóa'}</button>

@@ -13,6 +13,7 @@ export default async function Navbar() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4">
         <Link href="/questions" className="font-serif text-lg text-[var(--accent)]">Tech Interview AI</Link>
         <Link href="/questions" className="hover:text-white">Đề thi</Link>
+        <Link href="/interviews" className="hover:text-white">Phỏng vấn</Link>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           <span className="text-xs text-emerald-300">RLS Guard: Active</span>
           {user ? <>
