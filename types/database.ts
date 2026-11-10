@@ -2,6 +2,20 @@ export type UserRole = 'ADMIN' | 'INTERVIEWEE';
 
 export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
+export type InterviewSessionMode = 'PEER_TO_PEER' | 'AI_MOCK_INTERVIEW';
+export type InterviewSessionStatus = 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'EXPIRED';
+
+export interface InterviewSession {
+  id: string;
+  interviewer_id: string | null;
+  interviewee_id: string;
+  question_id: string;
+  session_mode: InterviewSessionMode;
+  status: InterviewSessionStatus;
+  scheduled_at: string;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   role: UserRole;
